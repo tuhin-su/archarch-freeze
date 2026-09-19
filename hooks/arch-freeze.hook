@@ -1,0 +1,52 @@
+#!/usr/bin/ash
+
+run_latehook() {
+    # Check if frozen mode is enabled via kernel cmdline
+    if ! grep -q -E '(systemd\.volatile=overlay|arch\.frozen|arch-freeze)' /proc/cmdline; then
+        return 0
+    fi
+
+    echo ":: [ARCH-FREEZE] Activating Volatile OverlayFS on Root Filesystem..."
+
+    local sysroot="/sysroot"
+    local overlay_base="/run/arch-freeze"
+    local lower="${overlay_base}/lower"
+    local cow="${overlay_base}/cow"
+    local upper="${cow}/upper"
+    local work="${cow}/work"
+
+    # Create directory for lower layer and move the real root mount into it
+    mkdir -p "${lower}"
+    if ! mount --move "${sysroot}" "${lower}"; then
+        echo ":: [ARCH-FREEZE ERROR] Failed to move /sysroot to ${lower}! Continuing normal boot."
+        return 1
+    fi
+
+    # Remount lower filesystem as read-only to ensure disk safety
+    mount -o remount,ro "${lower}" 2>/dev/null
+
+    # Mount tmpfs for RAM copy-on-write layer
+    mkdir -p "${cow}"
+    if ! mount -t tmpfs -o mode=0755,nodev,nosuid arch-freeze-cow "${cow}"; then
+        echo ":: [ARCH-FREEZE ERROR] Failed to mount tmpfs on ${cow}! Reverting to normal boot."
+        mount --move "${lower}" "${sysroot}"
+        return 1
+    fi
+
+    mkdir -p "${upper}" "${work}"
+
+    # Mount OverlayFS on /sysroot
+    if ! mount -t overlay arch-freeze-root -o "lowerdir=${lower},upperdir=${upper},workdir=${work}" "${sysroot}"; then
+        echo ":: [ARCH-FREEZE ERROR] Failed to mount OverlayFS! Reverting to normal boot."
+        umount "${cow}" 2>/dev/null
+        mount --move "${lower}" "${sysroot}"
+        return 1
+    fi
+
+    # Bind-mount lower to /sysroot/run/arch-freeze/lower so it remains accessible in the live OS
+    mkdir -p "${sysroot}/run/arch-freeze/lower"
+    mount --bind "${lower}" "${sysroot}/run/arch-freeze/lower" 2>/dev/null
+
+    echo ":: [ARCH-FREEZE] Root filesystem is FROZEN (in-memory OverlayFS)."
+    echo ":: [ARCH-FREEZE] All OS changes made during this session will vanish upon reboot."
+}

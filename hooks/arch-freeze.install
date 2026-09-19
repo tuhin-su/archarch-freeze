@@ -1,0 +1,14 @@
+#!/bin/bash
+
+build() {
+    add_module "overlay"
+    add_runscript
+}
+
+help() {
+    cat <<HELPEOF
+This hook sets up an ephemeral volatile OverlayFS on the root filesystem
+when the 'arch.frozen' or 'systemd.volatile=overlay' kernel command-line
+parameter is passed at boot time.
+HELPEOF
+}
