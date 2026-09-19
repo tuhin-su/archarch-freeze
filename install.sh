@@ -117,9 +117,9 @@ EOF
     mount /var/lib/incus
     info "Mounted /var/lib/incus successfully."
 
-    # Restart Incus
-    systemctl start incus.socket
-    info "Restarted incus.socket."
+    # Enable and start Incus
+    systemctl enable --now incus.socket
+    info "Enabled and started incus.socket."
 fi
 
 # 5. Install mkinitcpio Hooks
